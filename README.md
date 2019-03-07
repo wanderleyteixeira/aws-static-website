@@ -4,19 +4,22 @@ Infrastructure for static website hosted with S3 and CloudFront with a custom do
 ## Diagram
 ![alt CloudFormation](cloudformation-diagram.png)
 
-## Resources provisioned
+## Resources Provisioned
 
 * S3 bucket for web site content
 * Access logs written to logs bucket
 * ACM Certificate for SSL
 * CloudFront distributions for website https access
+* Rewrite URLs using CloudFront and Lambda@Edge
 * Route 53 hosted zone with DNS entries
 
-Note: For the `www` to zone apex redirection, we use Route 53 ALIAS feature in `A` record.
+## Apex Zone
 
-## ToDo
+We created an `A` record in Route 53's Hosted Zone, and used its special `ALIAS` feature to connect it to the AWS resource.
 
-Fix default root object (index.html) in subdirectories using [Lambda@Edge](https://aws.amazon.com/blogs/compute/implementing-default-directory-indexes-in-amazon-s3-backed-amazon-cloudfront-origins-using-lambdaedge/).
+## Lambda@Edge
+
+Implemented [Lambda@Edge](https://aws.amazon.com/blogs/compute/implementing-default-directory-indexes-in-amazon-s3-backed-amazon-cloudfront-origins-using-lambdaedge/) to be able to server `Archives/*` from blog since the file `index.html` in the subdirectory level will not be served by CloudFront when the site is hosted in S3. 
 
 ### References
 
