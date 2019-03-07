@@ -7,6 +7,7 @@ Description: >
   * Access logs written to logs bucket
   * ACM Certificate for SSL
   * CloudFront distributions for website https access
+  * Rewrite URLs using CloudFront and Lambda@Edge
   * Route 53 hosted zone with DNS entries
 
 Metadata:
@@ -73,6 +74,13 @@ Parameters:
     Type: String
     Default: index.html
 
+  IncludeLambdaEdge:
+    Type: String
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+    Default: 'Yes'
+
   LogsRetentionInDays:
     Description: Specifies the number of days you want to retain log events
     Type: Number
@@ -100,9 +108,8 @@ Conditions:
 
   NeedsNewHostedZone: !Equals [!Ref PreExistingHostedZoneDomain, ""]
   NeedsNewLogsBucket: !Equals [!Ref PreExistingLogsBucket, ""]
-  ShouldCreateSslCertificate: !Equals 
-    - !Ref CreateSslCertificate
-    - 'Yes'
+  IncludeLambdaEdge:  !Equals ['Yes', !Ref IncludeLambdaEdge]
+  ShouldCreateSslCertificate: !Equals  ['Yes', !Ref CreateSslCertificate]
 
 Resources:
 
@@ -116,6 +123,7 @@ Resources:
 
   S3BucketForWebsiteContent:
     Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
     Properties:
       AccessControl: PublicRead
       WebsiteConfiguration:
@@ -126,15 +134,14 @@ Resources:
         DestinationBucketName: !If [NeedsNewLogsBucket, !Ref LogsBucket, !Ref PreExistingLogsBucket]
         LogFilePrefix: !Sub "logs/s3/${DomainName}/"
       Tags:
-        - Key: "Name"
-          Value: "S3BucketForWebsiteContent"
-    DeletionPolicy: Retain
+        - Key: Domain
+          Value: !Ref DomainName
 
   CloudFrontOriginAccessIdentity:
     Type: 'AWS::CloudFront::CloudFrontOriginAccessIdentity'
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: Private distribution for accessing the "${DomainName}" bucket
+        Comment: !Sub 'CloudFront OAI for ${DomainName}'
   ReadPolicy:
     Type: 'AWS::S3::BucketPolicy'
     Properties:
@@ -185,7 +192,13 @@ Resources:
             - ShouldCreateSslCertificate
             - redirect-to-https
             - allow-all
-        DefaultRootObject: ''
+          # Lambda@Edge to fix subdirectories -> index.html
+          LambdaFunctionAssociations:
+            - !If
+                - IncludeLambdaEdge
+                - EventType: 'origin-request'
+                  LambdaFunctionARN: !Join [":", [!GetAtt [LambdaEdgeFunction, Arn], !GetAtt [LambdaEdgeVersion, Version]]]
+                - !Ref 'AWS::NoValue'
         Enabled: true
         HttpVersion: http2
         DefaultRootObject: index.html
@@ -204,8 +217,93 @@ Resources:
                 origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
         PriceClass: !Ref PriceClass
       Tags:
-        - Key: "Name"
-          Value: "CloudFrontDistribution"
+        - Key: Domain
+          Value: !Ref DomainName
+
+  # Lambda@Edge Function
+  LambdaEdgeFunction: 
+    Type: 'AWS::Lambda::Function'
+    Condition: IncludeLambdaEdge
+    Properties: 
+      Handler: 'index.handler'
+      Role: 
+        Fn::GetAtt: 
+          - 'LambdaEdgePermission'
+          - 'Arn'
+      Code: 
+        ZipFile: |
+            'use strict';
+            exports.handler = (event, context, callback) => {
+
+                // Extract the request from the CloudFront event that is sent to Lambda@Edge 
+                var request = event.Records[0].cf.request;
+                
+                // Extract the URI from the request
+                var requestUrl = request.uri;
+                
+                // Match any '/' that occurs at the end of a URI. Replace it with a default index
+                var redirectUrl = requestUrl.replace(/\/$/, '\/index.html');
+                
+                // Log the URI as received by CloudFront and the new URI to be used to fetch from origin
+                console.log("Old URI: " + requestUrl);
+                console.log("New URI: " + redirectUrl);
+                
+                // Replace the received URI with the URI that includes the index page
+                request.uri = redirectUrl;
+                
+                // Return to CloudFront
+                return callback(null, request);
+                
+                };
+      Runtime: 'nodejs8.10'
+      MemorySize: 128
+      Timeout: 3
+      Description: 'Redirects for CloudFront'
+      TracingConfig:
+        Mode: 'Active'
+      Tags:
+        - Key: Domain
+          Value: !Ref DomainName
+  
+  # Role and policy for Lambda@Edge and logs
+  # This allows CloudFront to execute this function as a Lambda@Edge function
+  LambdaEdgePermission:
+    Type: 'AWS::IAM::Role'
+    Condition: IncludeLambdaEdge
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Effect: Allow
+      Policies:
+        - PolicyName: EdgePoliciesLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'xray:PutTraceSegments'
+                  - 'xray:PutTelemetryRecords'
+                  - 'lambda:GetFunction'
+                  - 'lambda:EnableReplication*'
+                  - 'lambda:InvokeFunction'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Effect: Allow
+                Resource: '*'
+
+  # Lambda@Edge version
+  LambdaEdgeVersion: 
+    Type: 'AWS::Lambda::Version'
+    Condition: IncludeLambdaEdge
+    Properties: 
+      FunctionName: !Ref 'LambdaEdgeFunction'
+      Description: !Sub "The deployed version of the Lambda@Edge function"
 
   # DNS: wanderleyteixeira.com, www.wanderleyteixeira.com
   DNS:
@@ -215,8 +313,8 @@ Resources:
         Comment: !Join ['', ['Hosted zone for ', !Ref 'DomainName']]
       Name: !Ref 'DomainName'
       HostedZoneTags:
-        - Key: Name
-          Value: "DNS"
+        - Key: Domain
+          Value: !Ref DomainName
   Route53RecordSetGroup:
     Type: "AWS::Route53::RecordSetGroup"
     Properties:
@@ -329,8 +427,8 @@ Resources:
         - !Sub "*.${DomainName}"
       ValidationMethod: DNS
       Tags:
-        - Key: "Name"
-          Value: "SSLCertificate"
+        - Key: Domain
+          Value: !Ref DomainName
 
 Outputs:
 
