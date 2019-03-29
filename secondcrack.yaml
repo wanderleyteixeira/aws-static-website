@@ -130,7 +130,7 @@ Resources:
         Status: Enabled
       WebsiteConfiguration:
         IndexDocument: index.html
-        ErrorDocument: error.html
+        ErrorDocument: 404.html
       # logs.wanderleyteixeira.com/logs/s3/wanderleyteixeira.com/
       LoggingConfiguration:
         DestinationBucketName: !If [NeedsNewLogsBucket, !Ref LogsBucket, !Ref PreExistingLogsBucket]
@@ -172,6 +172,9 @@ Resources:
           SslSupportMethod: sni-only
         CustomErrorResponses:
           - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: !Ref ErrorPagePath
+          - ErrorCode: 404
             ResponseCode: 404
             ResponsePagePath: !Ref ErrorPagePath
         DefaultCacheBehavior:
