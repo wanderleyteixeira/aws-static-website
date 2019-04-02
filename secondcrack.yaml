@@ -67,7 +67,7 @@ Parameters:
   ErrorPagePath:
     Description: The path of the error page for the website.
     Type: String
-    Default: /404.html
+    Default: /404
 
   IndexDocument:
     Description: Directory index filename
@@ -130,7 +130,7 @@ Resources:
         Status: Enabled
       WebsiteConfiguration:
         IndexDocument: index.html
-        ErrorDocument: 404.html
+        ErrorDocument: 404
       # logs.wanderleyteixeira.com/logs/s3/wanderleyteixeira.com/
       LoggingConfiguration:
         DestinationBucketName: !If [NeedsNewLogsBucket, !Ref LogsBucket, !Ref PreExistingLogsBucket]
