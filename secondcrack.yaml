@@ -125,7 +125,6 @@ Resources:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Retain
     Properties:
-      AccessControl: PublicRead
       VersioningConfiguration:
         Status: Enabled
       WebsiteConfiguration:
