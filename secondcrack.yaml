@@ -259,7 +259,7 @@ Resources:
                 return callback(null, request);
                 
                 };
-      Runtime: 'nodejs8.10'
+      Runtime: 'nodejs10.x'
       MemorySize: 128
       Timeout: 3
       Description: 'Redirects for CloudFront'
@@ -390,7 +390,7 @@ Resources:
       HostedZoneName: !If [NeedsNewHostedZone, !Ref "AWS::NoValue", !Sub "${PreExistingHostedZoneDomain}."]
       RecordSets:
         # Fastmail MX
-        - Name: !Sub "fm1._domainkey._tcp.${DomainName}."
+        - Name: !Sub "fm1._domainkey.${DomainName}."
           Type: 'CNAME'
           TTL: '3600'
           ResourceRecords:
@@ -402,7 +402,7 @@ Resources:
       HostedZoneName: !If [NeedsNewHostedZone, !Ref "AWS::NoValue", !Sub "${PreExistingHostedZoneDomain}."]
       RecordSets:
         # Fastmail MX
-        - Name: !Sub "fm2._domainkey._tcp.${DomainName}."
+        - Name: !Sub "fm2._domainkey.${DomainName}."
           Type: 'CNAME'
           TTL: '3600'
           ResourceRecords:
@@ -414,7 +414,7 @@ Resources:
       HostedZoneName: !If [NeedsNewHostedZone, !Ref "AWS::NoValue", !Sub "${PreExistingHostedZoneDomain}."]
       RecordSets:
         # Fastmail MX
-        - Name: !Sub "fm3._domainkey._tcp.${DomainName}."
+        - Name: !Sub "fm3._domainkey.${DomainName}."
           Type: 'CNAME'
           TTL: '3600'
           ResourceRecords:
